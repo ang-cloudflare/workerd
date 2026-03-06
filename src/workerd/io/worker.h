@@ -95,6 +95,7 @@ struct EntrypointClasses {
 //   for a class name to end in "Instance". ("I have an instance of WorkerInstance...")
 class Worker: public kj::AtomicRefcounted {
  public:
+  using VersionInfo = Worker_VersionInfo;
   class Script;
   class Isolate;
   class Api;
@@ -152,38 +153,6 @@ class Worker: public kj::AtomicRefcounted {
       stderrPrefix = other.stderrPrefix.clone();
       return *this;
     }
-  };
-
-  // Version information associated with a worker. These are made available through `ctx.version`.
-  struct VersionInfo {
-    kj::String id;
-    kj::Maybe<kj::String> cohort;
-    kj::Maybe<kj::String> key;
-    kj::Maybe<kj::String> versionOverride;
-
-    VersionInfo clone() const {
-      return {
-        .id = kj::str(id),
-        .cohort = cohort.map([](const kj::String& s) { return kj::str(s); }),
-        .key = key.map([](const kj::String& s) { return kj::str(s); }),
-        .versionOverride = versionOverride.map([](const kj::String& s) { return kj::str(s); }),
-      };
-    }
-
-    jsg::JsValue toJs(jsg::Lock& js) const {
-      auto out = js.obj();
-      out.set(js, "id"_kj, js.str(id));
-      KJ_IF_SOME(someCohort, cohort) {
-        out.set(js, "cohort"_kj, js.str(someCohort));
-      }
-      KJ_IF_SOME(someKey, key) {
-        out.set(js, "key"_kj, js.str(someKey));
-      }
-      KJ_IF_SOME(someVersionOverride, versionOverride) {
-        out.set(js, "override"_kj, js.str(someVersionOverride));
-      }
-      return out;
-    };
   };
 
   explicit Worker(kj::Own<const Script> script,
@@ -784,15 +753,16 @@ class Worker::Lock {
   // default handler. Returns null if this is not a modules-syntax worker (but `entrypointName`
   // must be null in that case).
   //
+  // `versionInfo` is used to populate `ctx.version` when enabled.
   // `props` is the value to place in `ctx.props`.
   //
   // If running in an actor, the name and props are ignored and the entrypoint originally used to
   // construct the actor is returned.
   kj::Maybe<kj::Own<api::ExportedHandler>> getExportedHandler(
       kj::Maybe<kj::StringPtr> entrypointName,
+      kj::Maybe<VersionInfo> versionInfo,
       Frankenvalue props,
-      kj::Maybe<Worker::Actor&> actor,
-      kj::Maybe<VersionInfo> versionInfo = kj::none);
+      kj::Maybe<Worker::Actor&> actor);
 
   // Get the C++ object representing the global scope.
   api::ServiceWorkerGlobalScope& getGlobalScope();
@@ -1061,6 +1031,40 @@ class Worker::Actor final: public kj::Refcounted {
   friend class Worker;
 
   kj::Promise<void> ensureConstructedImpl(IoContext&, ActorClassInfo& info);
+};
+
+// Version information associated with a worker. These are made available through `ctx.version`.
+// This is also available through the preferred `Worker::VersionInfo` alias. `Worker_VersionInfo`
+// exists to allow for forward declaration in a couple of niche places.
+struct Worker_VersionInfo {
+  kj::String id;
+  kj::Maybe<kj::String> cohort;
+  kj::Maybe<kj::String> key;
+  kj::Maybe<kj::String> versionOverride;
+
+  Worker_VersionInfo clone() const {
+    return {
+      .id = kj::str(id),
+      .cohort = cohort.map([](const kj::String& s) { return kj::str(s); }),
+      .key = key.map([](const kj::String& s) { return kj::str(s); }),
+      .versionOverride = versionOverride.map([](const kj::String& s) { return kj::str(s); }),
+    };
+  }
+
+  jsg::JsValue toJs(jsg::Lock& js) const {
+    auto out = js.obj();
+    out.set(js, "id"_kj, js.str(id));
+    KJ_IF_SOME(someCohort, cohort) {
+      out.set(js, "cohort"_kj, js.str(someCohort));
+    }
+    KJ_IF_SOME(someKey, key) {
+      out.set(js, "key"_kj, js.str(someKey));
+    }
+    KJ_IF_SOME(someVersionOverride, versionOverride) {
+      out.set(js, "override"_kj, js.str(someVersionOverride));
+    }
+    return out;
+  };
 };
 
 // =======================================================================================
