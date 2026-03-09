@@ -60,28 +60,57 @@ export class DurableObjectExample extends DurableObject {
     }
   }
 
+  // ATTENTION: This a flaky test. We are tracking down the issue with info logs
+  // as we have only been able to trigger this in CI
   async testBasics() {
     const container = this.ctx.container;
+    console.info('FLAKY TEST: container.running =', container.running);
     if (container.running) {
-      let monitor = container.monitor().catch((_err) => {});
+      console.info('FLAKY TEST: running branch');
+
+      let monitor = container
+        .monitor()
+        .catch((err) => {
+          console.info('FLAKY TEST: monitor error:', err.message);
+        })
+        .finally(() => {
+          console.info('FLAKY TEST: monitor finally');
+        });
+
       await container.destroy();
+      console.info('FLAKY TEST: destroyed');
       await monitor;
     }
+
     assert.strictEqual(container.running, false);
 
+    console.info('FLAKY TEST: test start');
     // Start container with valid configuration
     container.start({
       env: { A: 'B', C: 'D', L: 'F' },
       enableInternet: true,
     });
 
-    const monitor = container.monitor().catch((_err) => {});
+    const monitor = container
+      .monitor()
+      .catch((err) => {
+        console.info('FLAKY TEST: second monitor catch:', err.message);
+      })
+      .finally(() => {
+        console.info('FLAKY TEST: second monitor finally');
+      });
 
+    console.info('FLAKY TEST: waitUntilContainerIsHealthy');
     await this.waitUntilContainerIsHealthy();
 
+    console.info('FLAKY TEST: destroy');
     await container.destroy();
+
+    console.info('FLAKY TEST: last destroyed');
     await monitor;
     assert.strictEqual(container.running, false);
+
+    console.info('FLAKY TEST: ended');
   }
 
   async testSetInactivityTimeout(timeout) {
@@ -592,9 +621,12 @@ export const testStatus = {
 export const testBasics = {
   async test(_ctrl, env) {
     for (const CONTAINER of [env.MY_CONTAINER, env.MY_DUPLICATE_CONTAINER]) {
+      console.info('FLAKY TEST: testBasics start');
       const id = CONTAINER.idFromName('testBasics');
       const stub = CONTAINER.get(id);
       await stub.testBasics();
+
+      console.info('FLAKY TEST: testBasics end');
     }
   },
 };
