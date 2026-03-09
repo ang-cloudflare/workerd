@@ -37,6 +37,7 @@ pub mod ffi {
 
         /// Look up a header value by HttpHeaderId, returning the value or an empty slice if absent.
         /// This exercises the C++ -> Rust -> C++ round-trip for HttpHeaderId.
+        #[expect(clippy::needless_lifetimes)]
         unsafe fn get_header_value_via_id<'a>(
             headers: &'a HttpHeaders,
             id: &HttpHeaderId,
