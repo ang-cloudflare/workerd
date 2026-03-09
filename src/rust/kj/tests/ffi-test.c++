@@ -74,22 +74,30 @@ KJ_TEST("get header by id round-trip through Rust") {
 
   // Round-trip: C++ -> Rust (get_header_value_via_id) -> C++ (get_header_by_id shim) -> value.
   {
-    auto value = kj::rust::tests::get_header_value_via_id(headers, customId);
-    auto strValue = kj::StringPtr(reinterpret_cast<const char*>(value.data()), value.size());
-    KJ_EXPECT(strValue == "hello-from-cpp", strValue);
+    auto maybe = kj::rust::tests::get_header_value_via_id(headers, customId);
+    KJ_IF_SOME(value, maybe) {
+      auto strValue = kj::StringPtr(reinterpret_cast<const char*>(value.data()), value.size());
+      KJ_EXPECT(strValue == "hello-from-cpp", strValue);
+    } else {
+      KJ_FAIL_EXPECT("expected Some for custom header, got None");
+    }
   }
 
-  // Absent header should return empty.
+  // Absent header should return None.
   {
-    auto value = kj::rust::tests::get_header_value_via_id(headers, absentId);
-    KJ_EXPECT(value.empty(), "expected empty slice for absent header");
+    auto maybe = kj::rust::tests::get_header_value_via_id(headers, absentId);
+    KJ_EXPECT(maybe == kj::none, "expected None for absent header");
   }
 
   // Builtin header via HttpHeaderId.
   {
-    auto value = kj::rust::tests::get_header_value_via_id(headers, kj::HttpHeaderId::HOST);
-    auto strValue = kj::StringPtr(reinterpret_cast<const char*>(value.data()), value.size());
-    KJ_EXPECT(strValue == "example.com", strValue);
+    auto maybe = kj::rust::tests::get_header_value_via_id(headers, kj::HttpHeaderId::HOST);
+    KJ_IF_SOME(value, maybe) {
+      auto strValue = kj::StringPtr(reinterpret_cast<const char*>(value.data()), value.size());
+      KJ_EXPECT(strValue == "example.com", strValue);
+    } else {
+      KJ_FAIL_EXPECT("expected Some for HOST header, got None");
+    }
   }
 }
 

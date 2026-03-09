@@ -12,6 +12,7 @@ use kj::http::HttpService;
 use kj::http::HttpServiceResponse;
 use kj::io::AsyncInputStream;
 use kj::io::AsyncIoStream;
+use kj_rs::KjMaybe;
 use kj_rs::KjOwn;
 
 #[cxx::bridge(namespace = "kj::rust::tests")]
@@ -35,13 +36,12 @@ pub mod ffi {
         #[expect(clippy::unnecessary_box_returns)]
         fn new_proxy_http_service(service: KjOwn<HttpService>) -> Box<DynHttpService>;
 
-        /// Look up a header value by HttpHeaderId, returning the value or an empty slice if absent.
+        /// Look up a header value by HttpHeaderId, returning the value if present.
         /// This exercises the C++ -> Rust -> C++ round-trip for HttpHeaderId.
-        #[expect(clippy::needless_lifetimes)]
         unsafe fn get_header_value_via_id<'a>(
             headers: &'a HttpHeaders,
             id: &HttpHeaderId,
-        ) -> &'a [u8];
+        ) -> KjMaybe<&'a [u8]>;
 
         /// Receive an array of HttpHeaderId pointers, convert to &[HttpHeaderIdRef] via
         /// from_ptr_slice, look up each header, and assert all are present.
@@ -97,10 +97,11 @@ fn new_proxy_http_service(service: KjOwn<ffi::HttpService>) -> Box<DynHttpServic
     .into_ffi()
 }
 
-fn get_header_value_via_id<'a>(headers: &'a ffi::HttpHeaders, id: &ffi::HttpHeaderId) -> &'a [u8] {
-    // Call the FFI shim directly. The returned slice borrows from the C++ HttpHeaders object.
-    let maybe: Option<&'a [u8]> = unsafe { kj::http::ffi::get_header_by_id(headers, id) }.into();
-    maybe.unwrap_or(b"")
+fn get_header_value_via_id<'a>(
+    headers: &'a ffi::HttpHeaders,
+    id: &ffi::HttpHeaderId,
+) -> KjMaybe<&'a [u8]> {
+    unsafe { kj::http::ffi::get_header_by_id(headers, id) }
 }
 
 /// # Safety
