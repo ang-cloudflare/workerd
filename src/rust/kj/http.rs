@@ -181,6 +181,44 @@ assert_eq_align!(ffi::HttpConnectSettings, u64);
 pub type HeaderId = ffi::BuiltinIndicesEnum;
 pub type HttpHeaderId = ffi::HttpHeaderId;
 
+/// Non-owning reference to a `kj::HttpHeaderId`.
+///
+/// `HttpHeaderId` is an opaque CXX type that can only be passed by reference across the FFI
+/// boundary. This wrapper makes the borrow lifetime explicit and provides a safe Rust handle.
+///
+/// `repr(transparent)` guarantees the same layout as `&ffi::HttpHeaderId` (i.e. a single
+/// pointer), which allows safe reinterpretation of `&[*const HttpHeaderId]` slices received
+/// from C++ into `&[HttpHeaderIdRef]` via [`HttpHeaderIdRef::from_ptr_slice`].
+#[derive(Clone, Copy)]
+#[repr(transparent)]
+pub struct HttpHeaderIdRef<'a>(&'a ffi::HttpHeaderId);
+
+impl<'a> From<&'a ffi::HttpHeaderId> for HttpHeaderIdRef<'a> {
+    fn from(value: &'a ffi::HttpHeaderId) -> Self {
+        HttpHeaderIdRef(value)
+    }
+}
+
+impl<'a> HttpHeaderIdRef<'a> {
+    /// Reinterpret a slice of `*const HttpHeaderId` pointers (as received from C++ via CXX) into
+    /// a slice of `HttpHeaderIdRef`.
+    ///
+    /// This is the canonical way to receive a `kj::ArrayPtr<const kj::HttpHeaderId>` from C++:
+    /// the C++ side converts the array into a `rust::Slice<const HttpHeaderId* const>` and the
+    /// Rust side calls this function to get a safe `&[HttpHeaderIdRef]`.
+    ///
+    /// # Safety
+    ///
+    /// Every pointer in `ptrs` must be non-null and point to a valid `HttpHeaderId` that outlives
+    /// lifetime `'a`.
+    pub unsafe fn from_ptr_slice(ptrs: &'a [*const HttpHeaderId]) -> &'a [Self] {
+        // SAFETY: `HttpHeaderIdRef` is `#[repr(transparent)]` over `&HttpHeaderId`, which has
+        // the same layout as `*const HttpHeaderId`. The caller guarantees all pointers are valid.
+        let ptr = std::ptr::from_ref::<[*const HttpHeaderId]>(ptrs) as *const [Self];
+        unsafe { &*ptr }
+    }
+}
+
 /// Non-owning constant reference to `kj::HttpHeaders`
 pub struct HttpHeadersRef<'a>(&'a ffi::HttpHeaders);
 
@@ -191,8 +229,8 @@ impl HttpHeadersRef<'_> {
 
     /// Look up a header by its `kj::HttpHeaderId`. This works for both builtin headers and custom
     /// headers registered via `HttpHeaderTable::Builder::add()`.
-    pub fn get_by_id(&self, id: &HttpHeaderId) -> Option<&[u8]> {
-        unsafe { ffi::get_header_by_id(self.0, id).into() }
+    pub fn get_by_id(&self, id: HttpHeaderIdRef<'_>) -> Option<&[u8]> {
+        unsafe { ffi::get_header_by_id(self.0, id.0).into() }
     }
 
     #[must_use]

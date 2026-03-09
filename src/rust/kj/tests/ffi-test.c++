@@ -93,6 +93,27 @@ KJ_TEST("get header by id round-trip through Rust") {
   }
 }
 
+KJ_TEST("assert header ids present via ArrayPtr round-trip through Rust") {
+  kj::HttpHeaderTable::Builder builder;
+  auto custom1 = builder.add("X-First");
+  auto custom2 = builder.add("X-Second");
+  auto table = builder.build();
+
+  kj::HttpHeaders headers(*table);
+  headers.setPtr(custom1, "value1");
+  headers.setPtr(custom2, "value2");
+  headers.setPtr(kj::HttpHeaderId::HOST, "example.com");
+
+  // Build an array of pointers from our HttpHeaderIds, simulating what you'd get from
+  // kj::ArrayPtr<const kj::HttpHeaderId> — CXX can't pass opaque types in slices directly,
+  // so we pass pointers instead.
+  const kj::HttpHeaderId* const idPtrs[] = {&custom1, &custom2, &kj::HttpHeaderId::HOST};
+  rust::Slice<const kj::HttpHeaderId* const> idSlice(idPtrs, 3);
+
+  // The Rust side wraps each pointer in HttpHeaderIdRef and asserts all are present.
+  kj::rust::tests::assert_header_ids_present(headers, idSlice);
+}
+
 KJ_TEST("http connect settings") {
   kj::EventLoop loop;
   kj::WaitScope waitScope(loop);

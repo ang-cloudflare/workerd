@@ -5,6 +5,7 @@ use kj::http::ConnectResponse;
 use kj::http::CxxHttpService;
 use kj::http::DynHttpService;
 use kj::http::HttpConnectSettings;
+use kj::http::HttpHeaderIdRef;
 use kj::http::HttpHeadersRef;
 use kj::http::HttpMethod;
 use kj::http::HttpService;
@@ -36,10 +37,15 @@ pub mod ffi {
 
         /// Look up a header value by HttpHeaderId, returning the value or an empty slice if absent.
         /// This exercises the C++ -> Rust -> C++ round-trip for HttpHeaderId.
-        unsafe fn get_header_value_via_id(
-            headers: &HttpHeaders,
+        unsafe fn get_header_value_via_id<'a>(
+            headers: &'a HttpHeaders,
             id: &HttpHeaderId,
         ) -> &'a [u8];
+
+        /// Receive an array of HttpHeaderId pointers, convert to &[HttpHeaderIdRef] via
+        /// from_ptr_slice, look up each header, and assert all are present.
+        /// This exercises passing a kj::ArrayPtr<const kj::HttpHeaderId> into Rust.
+        unsafe fn assert_header_ids_present(headers: &HttpHeaders, ids: &[*const HttpHeaderId]);
     }
 }
 
@@ -90,11 +96,23 @@ fn new_proxy_http_service(service: KjOwn<ffi::HttpService>) -> Box<DynHttpServic
     .into_ffi()
 }
 
-fn get_header_value_via_id<'a>(
-    headers: &'a ffi::HttpHeaders,
-    id: &ffi::HttpHeaderId,
-) -> &'a [u8] {
+fn get_header_value_via_id<'a>(headers: &'a ffi::HttpHeaders, id: &ffi::HttpHeaderId) -> &'a [u8] {
     // Call the FFI shim directly. The returned slice borrows from the C++ HttpHeaders object.
     let maybe: Option<&'a [u8]> = unsafe { kj::http::ffi::get_header_by_id(headers, id) }.into();
     maybe.unwrap_or(b"")
+}
+
+/// # Safety
+///
+/// Each pointer in `ids` must be non-null and point to a valid, live `HttpHeaderId`.
+unsafe fn assert_header_ids_present(headers: &ffi::HttpHeaders, ids: &[*const ffi::HttpHeaderId]) {
+    let headers_ref = HttpHeadersRef::from(headers);
+    let id_refs = unsafe { HttpHeaderIdRef::from_ptr_slice(ids) };
+    for (i, &id_ref) in id_refs.iter().enumerate() {
+        let value = headers_ref.get_by_id(id_ref);
+        assert!(
+            value.is_some(),
+            "expected header at index {i} to be present, but got None"
+        );
+    }
 }
